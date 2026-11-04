@@ -2,6 +2,8 @@
   'use strict';
   var params = new URLSearchParams(location.search);
   var frame = document.getElementById('app');
+  // 画面なしのブラウザは狭い窓を作れないことがあるため、幅は iframe で固定する（?w=375）
+  if (params.get('w')) frame.style.width = params.get('w') + 'px';
   frame.addEventListener('load', function () {
     var d = frame.contentDocument;
     var w = frame.contentWindow;

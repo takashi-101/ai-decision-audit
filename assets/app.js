@@ -393,7 +393,7 @@
         ]);
       }
       var memoId = 'memo-' + m.id;
-      var memo = el('textarea', { id: memoId, rows: '2', placeholder: '例：委任状の一文を足して使う' });
+      var memo = el('textarea', { id: memoId, rows: '2', placeholder: '気づいたことや、直し方を書いておけます' });
       memo.value = m.memo;
       memo.addEventListener('input', function () { m.memo = memo.value; });
 
