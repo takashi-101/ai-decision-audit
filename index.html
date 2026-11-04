@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src https://api.anthropic.com; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta name="referrer" content="no-referrer">
+  <meta name="color-scheme" content="light dark">
+  <title>AIが決めたことチェック</title>
+  <link rel="stylesheet" href="assets/style.css?v=0.2.0">
+</head>
+<body>
+  <a class="skip" href="#main">本文へ移動</a>
+  <header class="site-header">
+    <div class="wrap">
+      <h1>AIが決めたことチェック</h1>
+      <p class="lead">AIに頼んだ文章（依頼文）と、AIが返した文章（出力）を並べて、<strong>依頼に書かれていないのにAIが決めたこと</strong>に印を付けます。印ごとに「採る／採らない」を選び、記録として保存できます。</p>
+    </div>
+  </header>
+
+  <main id="main" class="wrap">
+    <section class="card" aria-labelledby="h-examples">
+      <h2 id="h-examples">判定例を見る</h2>
+      <p>API鍵がなくても、保存済みの判定例で使い方を確かめられます。</p>
+      <div id="example-buttons" class="button-row"></div>
+    </section>
+
+    <section class="card" aria-labelledby="h-input">
+      <h2 id="h-input"><span class="step">1</span>文章を貼り付ける</h2>
+      <div class="two-col">
+        <div class="field">
+          <label for="request-input">依頼文（AIに頼んだ文章）</label>
+          <textarea id="request-input" rows="9" placeholder="例：住民票の写しの取り方を、窓口に来る人向けの案内文にしてください。…"></textarea>
+        </div>
+        <div class="field">
+          <label for="output-input">AIの出力（AIが返した文章）</label>
+          <textarea id="output-input" rows="9" placeholder="AIが返した文章をそのまま貼り付けてください。"></textarea>
+        </div>
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="h-judge">
+      <h2 id="h-judge"><span class="step">2</span>印を付ける</h2>
+      <p>印の付け方は2つあります。</p>
+      <div class="two-col">
+        <div class="option">
+          <h3>AIに判定させる（API鍵が必要）</h3>
+          <div class="field">
+            <label for="key-input">AnthropicのAPI鍵</label>
+            <div class="inline">
+              <input id="key-input" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-…">
+              <button id="key-set" type="button" class="secondary">鍵を使う</button>
+            </div>
+            <p id="key-status" class="hint">鍵は保存しません。このページを閉じるか再読み込みすると消えます。</p>
+            <button id="key-clear" type="button" class="link" hidden>鍵を消す</button>
+          </div>
+          <button id="judge-btn" type="button" class="primary">判定する</button>
+          <p class="hint">「判定する」を押すと、依頼文と出力がAnthropic社のAPIへ送られます。送り先はそこだけです。</p>
+        </div>
+        <div class="option">
+          <h3>自分で印を付ける（鍵は不要）</h3>
+          <p>出力の一部を自分で選んで、4種類の印を手で付けます。</p>
+          <button id="manual-btn" type="button" class="secondary">手で付ける</button>
+        </div>
+      </div>
+      <p id="status" class="status" role="status" aria-live="polite"></p>
+      <div id="error" class="error" role="alert" hidden></div>
+    </section>
+
+    <section id="result-section" class="card" aria-labelledby="h-result" hidden>
+      <h2 id="h-result"><span class="step">3</span>印の付いた文章</h2>
+      <p id="origin-note" class="origin"></p>
+      <ul class="legend" id="legend"></ul>
+      <div class="two-col">
+        <div>
+          <h3 class="pane-title">依頼文</h3>
+          <div id="request-view" class="text-view" tabindex="0" aria-label="依頼文（印付き）"></div>
+        </div>
+        <div>
+          <h3 class="pane-title">AIの出力</h3>
+          <div id="output-view" class="text-view" tabindex="0" aria-label="AIの出力（印付き）"></div>
+        </div>
+      </div>
+      <p class="hint">色の付いた箇所の後ろの番号を押すと、下の一覧のその印へ移ります。</p>
+
+      <div id="manual-panel" class="manual" hidden>
+        <h3>手で付ける</h3>
+        <p>上の文章をなぞって選ぶと、下の欄に入ります。「落とした」は、依頼文の側をなぞってください。</p>
+        <fieldset class="type-pick">
+          <legend>印の種類</legend>
+          <div id="manual-types" class="type-options"></div>
+        </fieldset>
+        <div class="two-col">
+          <div class="field">
+            <label for="manual-output">出力の該当箇所</label>
+            <textarea id="manual-output" rows="3" placeholder="AIの出力をなぞって選ぶと入ります（「落とした」で無い場合は空のまま）"></textarea>
+          </div>
+          <div class="field">
+            <label for="manual-request">依頼文の対応箇所</label>
+            <textarea id="manual-request" rows="3" placeholder="依頼文をなぞって選ぶと入ります（無ければ空のまま＝「なし」）"></textarea>
+          </div>
+        </div>
+        <div class="field">
+          <label for="manual-reason">理由（一行）</label>
+          <input id="manual-reason" type="text" placeholder="例：支払い方法は依頼に無い">
+        </div>
+        <div class="button-row">
+          <button id="manual-add" type="button" class="primary">印を付ける</button>
+          <button id="manual-close" type="button" class="link">手で付けるのをやめる</button>
+        </div>
+        <p id="manual-msg" class="status" role="status" aria-live="polite"></p>
+      </div>
+    </section>
+
+    <section id="list-section" class="card" aria-labelledby="h-list" hidden>
+      <h2 id="h-list"><span class="step">4</span>印の一覧</h2>
+      <p>印ごとに選んでください。<strong>採る</strong>＝AIの判断をそのまま受け入れる。<strong>採らない</strong>＝直す・元に戻す。</p>
+      <p id="summary" class="summary"></p>
+      <div id="mark-list" class="mark-list"></div>
+    </section>
+
+    <section id="export-section" class="card" aria-labelledby="h-export" hidden>
+      <h2 id="h-export"><span class="step">5</span>記録を書き出す</h2>
+      <p>依頼文・出力・印・「採る／採らない」・メモを、ファイルとしてこの端末に保存します。どこにも送信しません。</p>
+      <div class="button-row">
+        <button id="export-csv" type="button" class="secondary">CSVで保存（Excelで開けます）</button>
+        <button id="export-json" type="button" class="secondary">JSONで保存</button>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <p>依頼文・出力・記録は、このブラウザの外には出ません（「判定する」を押したときの、Anthropic社のAPIへの送信を除く）。</p>
+      <p>判定例の文章はすべて架空のものです。 版 <span id="app-version"></span></p>
+    </div>
+  </footer>
+
+  <script src="assets/audit-core.js?v=0.2.0"></script>
+  <script src="assets/examples.js?v=0.2.0"></script>
+  <script src="assets/app.js?v=0.2.0"></script>
+</body>
+</html>

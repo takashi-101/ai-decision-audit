@@ -5,7 +5,7 @@
 (function (global) {
   'use strict';
 
-  var APP_VERSION = '0.1.0';
+  var APP_VERSION = '0.2.0';
   var MODEL = 'claude-sonnet-5-5';
   var API_URL = 'https://api.anthropic.com/v1/messages';
   var MAX_TOKENS = 8000;
