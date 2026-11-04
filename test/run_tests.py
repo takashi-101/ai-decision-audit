@@ -94,6 +94,7 @@ def take_shots(browser, base, profile):
         if dark:
             args.append("--force-dark-mode")
             args.append("--blink-settings=preferredColorScheme=0")
+        query = f"w={width}&{query}"
         headless(browser, args + [f"{base}/test/shot.html?{query}"], profile)
         print(("  撮影 " if out.exists() else "  失敗 ") + str(out.relative_to(ROOT)))
     # README 用の2枚
