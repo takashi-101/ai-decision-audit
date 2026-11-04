@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>テスト実行中…</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 16px; background: #fff; color: #111; }
+    .pass { color: #176b35; } .fail { color: #b3261e; font-weight: 700; }
+    pre { white-space: pre-wrap; font-size: 12px; margin: 2px 0 8px 16px; }
+    #summary { font-size: 1.2rem; font-weight: 700; }
+    iframe { width: 1280px; height: 800px; border: 1px solid #ccc; }
+  </style>
+</head>
+<body>
+  <h1>ai-decision-audit のテスト</h1>
+  <p>ローカルのサーバーで公開フォルダを配信し、このページを開くとテストが走ります（README参照）。本物のAPIには接続しません。</p>
+  <p id="summary">実行中…</p>
+  <ol id="results"></ol>
+  <iframe id="app" title="テスト対象の画面"></iframe>
+
+  <script src="../assets/audit-core.js"></script>
+  <script src="../assets/examples.js"></script>
+  <script src="harness.js"></script>
+  <script src="unit-tests.js"></script>
+  <script src="ui-tests.js"></script>
+  <script>T.run();</script>
+</body>
+</html>
