@@ -1,4 +1,4 @@
-/* 画面（index.html）のテスト。iframe に画面を開き、fetch を仮の応答に差し替えて操作する。 */
+/* 画面（index.html）のテスト。iframe に画面を開いて操作する。fetch は差し替え、呼ばれないことを確かめる。 */
 (function () {
   'use strict';
   var test = T.test, ok = T.ok, eq = T.eq;
@@ -12,7 +12,6 @@
     { type: '落とした', output_quote: 'なし', request_quote: '代理人の委任状のことも書いてください。', reason: '委任状の案内が無い' },
     { type: '寄せた', output_quote: 'お早めにお越しください。', request_quote: 'なし', reason: '来庁を急かす語調' }
   ] });
-  var KEY = 'sk-ant-test-0000-not-a-real-key';
 
   async function load() {
     frame.src = '../index.html?t=' + Date.now();
@@ -29,15 +28,10 @@
   function fill(id, v) { $(id).value = v; $(id).dispatchEvent(new w.Event('input', { bubbles: true })); }
   function visible(id) { return !$(id).hidden; }
 
-  async function setUpJudge(queue) {
+  async function setUpTexts() {
     await load();
-    var f = T.mockFetch(queue);
-    w.fetch = f;
     fill('request-input', REQ);
     fill('output-input', OUT);
-    fill('key-input', KEY);
-    click('key-set');
-    return f;
   }
 
   T.test('画面：はじめは結果の欄が隠れていて、判定例のボタンが3つある', async function () {
@@ -48,7 +42,7 @@
   });
 
   ['counter', 'meeting', 'course'].forEach(function (id, i) {
-    T.test('画面：判定例' + (i + 1) + 'が鍵なしで正しく表示される（' + id + '）', async function () {
+    T.test('画面：判定例' + (i + 1) + 'が正しく表示される（' + id + '）', async function () {
       await load();
       var ex = w.AuditExamples[i];
       d.querySelector('[data-example="' + id + '"]').click();
@@ -65,109 +59,73 @@
       ok(d.querySelectorAll('#output-view .hl').length > 0, '出力に色が付く');
       ok($('origin-note').textContent.indexOf('判定例') >= 0, '判定例であることを示す');
       ok($('output-view').textContent.indexOf(ex.output.slice(0, 10)) >= 0, '出力の文章が表示される');
-      eq(w.fetch.calls.length, 0, 'APIを呼ばない');
+      eq(w.fetch.calls.length, 0, '通信しない');
       ok($('summary').textContent.indexOf('未選択 ' + ex.marks.length + '件') >= 0, $('summary').textContent);
     });
   });
 
-  T.test('画面：鍵なしで「判定する」を押すと案内が出て、APIを呼ばない', async function () {
+  T.test('画面：API鍵の欄が無い', async function () {
+    await load();
+    eq($('key-input'), null, '鍵の入力欄');
+    eq($('judge-btn'), null, '「判定する」ボタン');
+    ok(d.body.textContent.indexOf('API鍵') < 0, '画面に「API鍵」の語が無い');
+  });
+
+  T.test('画面：文章が空のまま「判定の依頼文を作る」を押すと案内が出る', async function () {
     await load();
     fill('request-input', REQ);
-    fill('output-input', OUT);
-    click('judge-btn');
+    click('copy-prompt');
     ok(visible('error'));
-    ok($('error').textContent.indexOf('API鍵を入れて') >= 0, $('error').textContent);
-    eq(w.fetch.calls.length, 0);
+    ok($('error').textContent.indexOf('両方を貼り付けて') >= 0, $('error').textContent);
+    ok(!visible('prompt-area'), '依頼文の欄は出ない');
   });
 
-  T.test('画面：文章が空のまま「判定する」を押すと案内が出る', async function () {
-    await setUpJudge([T.apiReply(GOOD)]);
-    fill('request-input', '');
-    click('judge-btn');
-    ok($('error').textContent.indexOf('両方を貼り付けて') >= 0);
+  T.test('画面：「判定の依頼文を作る」で、依頼文と出力を含む依頼文が欄に出て、通信しない', async function () {
+    await setUpTexts();
+    click('copy-prompt');
+    ok(visible('prompt-area'), '欄が出る');
+    var p = $('prompt-text').value;
+    ok(p.indexOf(REQ) >= 0 && p.indexOf(OUT) >= 0, '依頼文と出力を含む');
+    ok(p.indexOf('JSONだけ') >= 0);
+    await T.waitFor(function () { return $('status').textContent.indexOf('自分のAIアプリに貼り付け') >= 0; }, 2000, '案内');
+    eq(w.fetch.calls.length, 0, '通信しない');
   });
 
-  T.test('画面：判定に成功すると、色の印と一覧が出る', async function () {
-    var f = await setUpJudge([T.apiReply(GOOD)]);
-    click('judge-btn');
-    await T.waitFor(function () { return visible('list-section'); }, 3000, '結果');
-    eq(f.calls.length, 1);
-    eq(f.calls[0].url, 'https://api.anthropic.com/v1/messages');
-    eq(f.calls[0].init.headers['anthropic-dangerous-direct-browser-access'], 'true');
+  T.test('画面：AIアプリの返答を読み込むと、色の印と一覧が出る', async function () {
+    await setUpTexts();
+    fill('answer-input', '判定の結果です。\n```json\n' + GOOD + '\n```');
+    click('load-answer');
+    ok(visible('list-section'), '一覧が出る');
     eq(d.querySelectorAll('.mark-card').length, 3);
     eq(d.querySelectorAll('#output-view .hl.t-add').length, 1, '「足した」の色');
     eq(d.querySelectorAll('#request-view .hl.t-drop').length, 1, '「落とした」は依頼文の側に色');
     eq(d.querySelectorAll('#output-view .hl.t-shift').length, 1, '「寄せた」の色');
     ok($('status').textContent.indexOf('印は3件') >= 0, $('status').textContent);
-    ok($('origin-note').textContent.indexOf('claude-sonnet-5-5') >= 0);
+    ok($('origin-note').textContent.indexOf('自分のAIアプリ') >= 0, $('origin-note').textContent);
+    ok(d.querySelector('.mark-card').textContent.indexOf('AIの判定（返答を貼り付け）') >= 0, '付け方の表示');
     ok(!visible('error'));
+    eq(w.fetch.calls.length, 0, '通信しない');
   });
 
-  T.test('画面：鍵はページに残さず、ブラウザにも保存しない', async function () {
-    await setUpJudge([T.apiReply(GOOD)]);
-    eq($('key-input').value, '', '入力欄から消える');
-    ok(!visible('key-clear') === false, '「鍵を消す」が出る');
-    click('judge-btn');
-    await T.waitFor(function () { return visible('list-section'); });
-    ok(d.documentElement.outerHTML.indexOf(KEY) < 0, '画面のどこにも鍵が無い');
-    eq(w.localStorage.length, 0, 'localStorage は空');
-    eq(w.sessionStorage.length, 0, 'sessionStorage は空');
-    eq(d.cookie, '', 'Cookie は空');
-    ok(JSON.stringify(w.AuditApp.state).indexOf(KEY) < 0, '外から見える状態に鍵が無い');
-  });
-
-  T.test('画面：「鍵を消す」の後は判定できない', async function () {
-    var f = await setUpJudge([T.apiReply(GOOD)]);
-    click('key-clear');
-    click('judge-btn');
-    ok($('error').textContent.indexOf('API鍵を入れて') >= 0);
-    eq(f.calls.length, 0);
-  });
-
-  T.test('画面：形式が崩れた応答のあと、再試行して結果が出る', async function () {
-    var seen = [];
-    var f = await setUpJudge([
-      function () { seen.push($('status').textContent); return T.apiReply('すみません、うまく出せませんでした'); },
-      function () { seen.push($('status').textContent); return T.apiReply(GOOD); }
-    ]);
-    click('judge-btn');
-    await T.waitFor(function () { return visible('list-section'); }, 3000, '結果');
-    eq(f.calls.length, 2);
-    ok(seen[1].indexOf('もう一度問い合わせています') >= 0, '再試行中の表示：' + seen[1]);
-    eq(d.querySelectorAll('.mark-card').length, 3);
-    ok(!visible('error'));
-  });
-
-  T.test('画面：2回とも崩れていたら、エラーを画面に出す', async function () {
-    var f = await setUpJudge([T.apiReply('{"marks": ['), T.apiReply('{"result": []}')]);
-    click('judge-btn');
-    await T.waitFor(function () { return visible('error'); }, 3000, 'エラー表示');
-    eq(f.calls.length, 2);
-    ok($('error').textContent.indexOf('形式が崩れていた') >= 0, $('error').textContent);
+  T.test('画面：返答が空、または崩れているときは、理由を出して読み込まない', async function () {
+    await setUpTexts();
+    click('load-answer');
+    ok($('error').textContent.indexOf('返答を') >= 0, $('error').textContent);
+    fill('answer-input', '{"marks": [');
+    click('load-answer');
+    ok($('error').textContent.indexOf('読み込めませんでした') >= 0, $('error').textContent);
     ok(d.querySelectorAll('#error li').length > 0, '崩れの内容を添える');
     eq($('error').getAttribute('role'), 'alert');
     ok(!visible('list-section'), '結果は出さない');
-    eq($('judge-btn').disabled, false, 'ボタンが元に戻る');
   });
 
-  T.test('画面：鍵が正しくない（401）ときのエラー表示', async function () {
-    await setUpJudge([T.apiError(401, 'authentication_error', 'invalid x-api-key')]);
-    click('judge-btn');
-    await T.waitFor(function () { return visible('error'); });
-    ok($('error').textContent.indexOf('API鍵が正しくない') >= 0, $('error').textContent);
-  });
-
-  T.test('画面：判定中はボタンを押せない', async function () {
-    var release;
-    var gate = new Promise(function (r) { release = r; });
-    await setUpJudge([function () { return gate.then(function () { return T.apiReply(GOOD); }); }]);
-    click('judge-btn');
-    await T.sleep(30);
-    eq($('judge-btn').disabled, true);
-    eq($('manual-btn').disabled, true);
-    ok($('judge-btn').textContent.indexOf('判定しています') >= 0);
-    release();
-    await T.waitFor(function () { return !$('judge-btn').disabled; });
+  T.test('画面：ブラウザに何も保存しない', async function () {
+    await setUpTexts();
+    fill('answer-input', GOOD);
+    click('load-answer');
+    eq(w.localStorage.length, 0, 'localStorage は空');
+    eq(w.sessionStorage.length, 0, 'sessionStorage は空');
+    eq(d.cookie, '', 'Cookie は空');
   });
 
   T.test('画面：「手で付ける」— 文章をなぞると欄に入り、4種類の印を付けられる', async function () {
@@ -217,7 +175,7 @@
     var del = Array.prototype.find.call(d.querySelectorAll('.mark-card button'), function (b) { return b.textContent === 'この印を消す'; });
     del.click();
     eq(d.querySelectorAll('.mark-card').length, 1);
-    eq(w.fetch.calls.length, 0, 'APIを呼ばない');
+    eq(w.fetch.calls.length, 0, '通信しない');
   });
 
   T.test('画面：「採る／採らない」とメモが記録に入り、CSVとJSONで書き出せる', async function () {
@@ -270,6 +228,7 @@
     refs.forEach(function (r) {
       ok(r.indexOf('?v=' + window.AuditCore.APP_VERSION + '"') > 0, '版の印が無いか古い：' + r);
     });
-    ok(html.indexOf("connect-src https://api.anthropic.com") > 0, '通信先をAnthropicのAPIだけに限っている');
+    ok(html.indexOf("connect-src 'none'") > 0, 'どこにも通信しない設定');
+    ok(html.indexOf('anthropic') < 0, 'Anthropicへの通信先が無い');
   });
 })();

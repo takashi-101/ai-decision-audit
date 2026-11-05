@@ -1,4 +1,4 @@
-/* 小さなテストの仕組みと、Claude APIの応答をまねた仮の応答 */
+/* 小さなテストの仕組みと、通信が起きないことを確かめるための仮の fetch */
 (function (global) {
   'use strict';
 
@@ -18,26 +18,6 @@
   async function rejects(promise, check) {
     try { await promise; } catch (e) { if (check) check(e); return e; }
     throw new AssertionError('エラーになるはずが、成功しました');
-  }
-
-  /* --- Claude API の応答の形をまねる --- */
-
-  function apiReply(text, stopReason) {
-    return new Response(JSON.stringify({
-      id: 'msg_test_0001',
-      type: 'message',
-      role: 'assistant',
-      model: 'claude-sonnet-5-5',
-      content: [{ type: 'text', text: text }],
-      stop_reason: stopReason || 'end_turn',
-      stop_sequence: null,
-      usage: { input_tokens: 100, output_tokens: 50 }
-    }), { status: 200, headers: { 'content-type': 'application/json' } });
-  }
-
-  function apiError(status, type, message) {
-    return new Response(JSON.stringify({ type: 'error', error: { type: type, message: message } }),
-      { status: status, headers: { 'content-type': 'application/json' } });
   }
 
   // 呼ばれるたびに、用意した応答を順に返す fetch。呼び出しは calls に記録する。
@@ -94,7 +74,7 @@
 
   global.T = {
     test: test, ok: ok, eq: eq, rejects: rejects,
-    apiReply: apiReply, apiError: apiError, mockFetch: mockFetch,
+    mockFetch: mockFetch,
     sleep: sleep, waitFor: waitFor, run: run
   };
 })(window);

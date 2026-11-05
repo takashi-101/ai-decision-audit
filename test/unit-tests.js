@@ -11,112 +11,48 @@
     { type: '落とした', output_quote: 'なし', request_quote: '代理人の委任状のことも書いてください。', reason: '委任状の案内が無い' }
   ] });
 
-  function judgeWith(queue, extra) {
-    var f = T.mockFetch(queue);
-    var p = C.judge(Object.assign({ apiKey: 'test-key-123', request: REQ, output: OUT, fetch: f }, extra || {}));
-    return { fetch: f, promise: p };
-  }
-
-  test('正しいJSONの応答を1回で受け取れる', async function () {
-    var r = judgeWith([T.apiReply(GOOD)]);
-    var res = await r.promise;
-    eq(res.attempts, 1, '試行回数');
-    eq(res.marks.length, 2, '印の数');
-    eq(res.marks[0].type, '足した');
-    eq(r.fetch.calls.length, 1, 'APIを呼んだ回数');
+  test('判定の依頼文：指示・依頼文・出力を1つにまとめ、JSONだけを返すよう求める', function () {
+    var p = C.buildCopyPrompt(REQ, OUT);
+    ok(p.indexOf('JSONだけ') >= 0, 'JSONだけを返すよう指示している');
+    ok(p.indexOf('<依頼文>\n' + REQ + '\n</依頼文>') >= 0, '依頼文を含む');
+    ok(p.indexOf('<出力>\n' + OUT + '\n</出力>') >= 0, '出力を含む');
+    ['落とした', '足した', '選んだ', '寄せた'].forEach(function (t) { ok(p.indexOf(t) >= 0, t + 'の説明'); });
   });
 
-  test('APIの呼び方：送信先・ヘッダー・モデル', async function () {
-    var r = judgeWith([T.apiReply(GOOD)]);
-    await r.promise;
-    var call = r.fetch.calls[0];
-    eq(call.url, 'https://api.anthropic.com/v1/messages', '送信先');
-    var h = call.init.headers;
-    eq(h['anthropic-dangerous-direct-browser-access'], 'true');
-    eq(h['x-api-key'], 'test-key-123');
-    eq(h['anthropic-version'], '2023-06-01');
-    eq(call.init.method, 'POST');
-    eq(call.body.model, 'claude-sonnet-5-5', 'モデル');
-    ok(call.body.system.indexOf('JSONだけ') >= 0, 'JSONだけを返すよう指示している');
-    ok(call.body.messages[0].content.indexOf(REQ) >= 0 && call.body.messages[0].content.indexOf(OUT) >= 0, '依頼文と出力を送っている');
+  test('返答の読み込み：正しいJSONを読める', function () {
+    var r = C.readAnswer(GOOD);
+    eq(r.ok, true);
+    eq(r.marks.length, 2, '印の数');
+    eq(r.marks[0].type, '足した');
   });
 
-  test('コードブロックの記号で囲まれただけの応答は受け付ける', async function () {
-    var r = judgeWith([T.apiReply('```json\n' + GOOD + '\n```')]);
-    var res = await r.promise;
-    eq(res.attempts, 1);
-    eq(res.marks.length, 2);
+  test('返答の読み込み：コードブロックの記号や前後の説明が付いていても読める', function () {
+    eq(C.readAnswer('```json\n' + GOOD + '\n```').marks.length, 2, 'コードブロック');
+    eq(C.readAnswer('判定結果は次のとおりです。\n' + GOOD + '\n以上です。').marks.length, 2, '前後の説明');
   });
 
-  test('印が0件の応答（{"marks":[]}）を受け付ける', async function () {
-    var r = judgeWith([T.apiReply('{"marks":[]}')]);
-    var res = await r.promise;
-    eq(res.marks.length, 0);
+  test('返答の読み込み：印が0件（{"marks":[]}）を受け付ける', function () {
+    var r = C.readAnswer('{"marks":[]}');
+    eq(r.ok, true);
+    eq(r.marks.length, 0);
   });
 
-  test('JSONが崩れていたら一度だけ再試行し、2回目で成功する', async function () {
-    var retried = [];
-    var r = judgeWith([T.apiReply('はい、判定結果は次のとおりです。{"marks": ['), T.apiReply(GOOD)],
-      { onRetry: function (errs) { retried.push(errs); } });
-    var res = await r.promise;
-    eq(res.attempts, 2, '試行回数');
-    eq(r.fetch.calls.length, 2, 'APIを呼んだ回数');
-    eq(retried.length, 1, '再試行の知らせ');
-    var msgs = r.fetch.calls[1].body.messages;
-    eq(msgs.length, 3, '再試行時の会話の長さ');
-    eq(msgs[1].role, 'assistant');
-    eq(msgs[2].role, 'user');
-    ok(msgs[2].content.indexOf('JSONだけ') >= 0, '再試行でJSONだけを求めている');
+  test('返答の読み込み：崩れた返答は、理由を添えて読み込まない', function () {
+    var r1 = C.readAnswer('はい、判定結果は次のとおりです。{"marks": [');
+    eq(r1.ok, false);
+    ok(r1.errors[0].indexOf('JSONとして読めません') >= 0, r1.errors[0]);
+    eq(C.readAnswer('').ok, false, '空');
+    eq(C.readAnswer('{"marks": "なし"}').ok, false, 'marks が一覧でない');
+    var r2 = C.readAnswer(JSON.stringify({ marks: [{ type: '変えた', output_quote: 'x', request_quote: 'なし', reason: 'r' }] }));
+    eq(r2.ok, false, '種類が不正');
+    ok(r2.errors[0].indexOf('4種類') >= 0);
+    eq(C.readAnswer(JSON.stringify({ marks: [{ type: '足した', output_quote: '（現金のみ）', request_quote: 'なし' }] })).ok, false, 'reason が無い');
   });
 
-  test('2回とも崩れていたら形式エラーになり、3回目は呼ばない', async function () {
-    var r = judgeWith([T.apiReply('判定できません'), T.apiReply('{"marks": "なし"}'), T.apiReply(GOOD)]);
-    var e = await T.rejects(r.promise);
-    eq(e.name, 'AuditError');
-    eq(e.kind, 'format');
-    ok(e.message.indexOf('形式が崩れて') >= 0, '日本語のエラー文');
-    ok(e.details.length > 0, '崩れの内容を持っている');
-    eq(r.fetch.calls.length, 2, 'APIを呼んだ回数');
-  });
-
-  test('項目の形が崩れていたら（種類が不正）再試行する', async function () {
-    var bad = JSON.stringify({ marks: [{ type: '変えた', output_quote: 'x', request_quote: 'なし', reason: 'r' }] });
-    var r = judgeWith([T.apiReply(bad), T.apiReply(GOOD)]);
-    var res = await r.promise;
-    eq(res.attempts, 2);
-  });
-
-  test('項目が欠けていたら（reasonが無い）再試行する', async function () {
-    var bad = JSON.stringify({ marks: [{ type: '足した', output_quote: '（現金のみ）', request_quote: 'なし' }] });
-    var r = judgeWith([T.apiReply(bad), T.apiReply(GOOD)]);
-    eq((await r.promise).attempts, 2);
-  });
-
-  test('返答が途中で切れていたら（max_tokens）再試行する', async function () {
-    var r = judgeWith([T.apiReply(GOOD.slice(0, 40), 'max_tokens'), T.apiReply(GOOD)]);
-    eq((await r.promise).attempts, 2);
-  });
-
-  test('鍵が正しくない（401）ときは再試行せず、日本語のエラーを出す', async function () {
-    var r = judgeWith([T.apiError(401, 'authentication_error', 'invalid x-api-key')]);
-    var e = await T.rejects(r.promise);
-    eq(e.kind, 'http');
-    ok(e.message.indexOf('API鍵が正しくない') >= 0, e.message);
-    ok(e.details[0].indexOf('invalid x-api-key') >= 0, '詳細を添える');
-    eq(r.fetch.calls.length, 1);
-  });
-
-  test('混雑（429）・サーバーの問題（529）のエラー文', async function () {
-    var e1 = await T.rejects(judgeWith([T.apiError(429, 'rate_limit_error', 'x')]).promise);
-    ok(e1.message.indexOf('429') >= 0 && e1.message.indexOf('時間をおいて') >= 0, e1.message);
-    var e2 = await T.rejects(judgeWith([T.apiError(529, 'overloaded_error', 'x')]).promise);
-    ok(e2.message.indexOf('529') >= 0, e2.message);
-  });
-
-  test('通信できないときのエラー文', async function () {
-    var e = await T.rejects(judgeWith([new TypeError('Failed to fetch')]).promise);
-    eq(e.kind, 'network');
-    ok(e.message.indexOf('つながりませんでした') >= 0);
+  test('中核にAPIを呼ぶ部品が無い', function () {
+    eq(typeof C.judge, 'undefined', 'judge');
+    eq(typeof C.callApi, 'undefined', 'callApi');
+    eq(typeof C.API_URL, 'undefined', 'API_URL');
   });
 
   test('検証：「落とした」は依頼文の対応箇所が必要、ほかは出力の該当箇所が必要', function () {
@@ -167,7 +103,7 @@
     eq(lines[0], '番号,種類,出力の該当箇所,依頼文の対応箇所,理由,付け方,判断,メモ');
     ok(csv.indexOf('"a,b\n""c"""') >= 0, 'カンマ・改行・引用符を囲む');
     ok(csv.indexOf("'=SUM(A1)") >= 0, '式として扱われないようにする');
-    ok(csv.indexOf('AIの判定,採る') >= 0);
+    ok(csv.indexOf('AIの判定（返答を貼り付け）,採る') >= 0);
     ok(csv.indexOf('手で付けた,未選択,メモ') >= 0);
   });
 

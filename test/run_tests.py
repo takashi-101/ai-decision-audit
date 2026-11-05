@@ -1,7 +1,7 @@
 """テストをコマンドから走らせる。
 
 公開フォルダをローカルで配信し、Google Chrome（または Microsoft Edge）を画面なしで起動して
-test/index.html を開き、結果（PASS/FAIL）を表示する。本物のAPIには接続しない。
+test/index.html を開き、結果（PASS/FAIL）を表示する。外部には通信しない。
 
     python test/run_tests.py            テストを走らせる
     python test/run_tests.py --shots    画面写真も撮る（375px と 1280px、ライト／ダーク）
