@@ -3,11 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src https://api.anthropic.com; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <meta name="referrer" content="no-referrer">
   <meta name="color-scheme" content="light dark">
   <title>AIが決めたことチェック</title>
-  <link rel="stylesheet" href="assets/style.css?v=0.3.0">
+  <link rel="stylesheet" href="assets/style.css?v=0.4.0">
 </head>
 <body>
   <a class="skip" href="#main">本文へ移動</a>
@@ -21,7 +21,7 @@
   <main id="main" class="wrap">
     <section class="card" aria-labelledby="h-examples">
       <h2 id="h-examples">判定例を見る</h2>
-      <p>API鍵がなくても、保存済みの判定例で使い方を確かめられます。</p>
+      <p>保存済みの判定例で、文章を用意しなくても使い方を確かめられます。</p>
       <div id="example-buttons" class="button-row"></div>
     </section>
 
@@ -44,21 +44,21 @@
       <p>印の付け方は2つあります。</p>
       <div class="two-col">
         <div class="option">
-          <h3>AIに判定させる（API鍵が必要）</h3>
-          <div class="field">
-            <label for="key-input">AnthropicのAPI鍵</label>
-            <div class="inline">
-              <input id="key-input" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-…">
-              <button id="key-set" type="button" class="secondary">鍵を使う</button>
-            </div>
-            <p id="key-status" class="hint">鍵は保存しません。このページを閉じるか再読み込みすると消えます。</p>
-            <button id="key-clear" type="button" class="link" hidden>鍵を消す</button>
+          <h3>自分のAIアプリで判定する（追加の料金はかかりません）</h3>
+          <p>普段使っているAIアプリ（Claude Desktop、LM Studio など）に判定を頼み、返答をここに貼り付けます。このページからはどこにも送信しません。</p>
+          <button id="copy-prompt" type="button" class="primary">判定の依頼文を作る</button>
+          <div id="prompt-area" class="field" hidden>
+            <label for="prompt-text">判定の依頼文（AIアプリに貼り付ける文章）</label>
+            <textarea id="prompt-text" rows="6" readonly></textarea>
           </div>
-          <button id="judge-btn" type="button" class="primary">判定する</button>
-          <p class="hint">「判定する」を押すと、依頼文と出力がAnthropic社のAPIへ送られます。送り先はそこだけです。</p>
+          <div class="field">
+            <label for="answer-input">AIアプリの返答</label>
+            <textarea id="answer-input" rows="5" spellcheck="false" placeholder='{"marks":[ … ]} の形の返答を、そのまま貼り付けてください。'></textarea>
+          </div>
+          <button id="load-answer" type="button" class="secondary">返答を読み込む</button>
         </div>
         <div class="option">
-          <h3>自分で印を付ける（鍵は不要）</h3>
+          <h3>自分で印を付ける</h3>
           <p>出力の一部を自分で選んで、4種類の印を手で付けます。</p>
           <button id="manual-btn" type="button" class="secondary">手で付ける</button>
         </div>
@@ -131,13 +131,13 @@
 
   <footer class="site-footer">
     <div class="wrap">
-      <p>依頼文・出力・記録は、このブラウザの外には出ません（「判定する」を押したときの、Anthropic社のAPIへの送信を除く）。</p>
+      <p>依頼文・出力・記録は、このブラウザの外には出ません。このページは、どこにも通信しない設定にしています。</p>
       <p>判定例の文章はすべて架空のものです。 版 <span id="app-version"></span></p>
     </div>
   </footer>
 
-  <script src="assets/audit-core.js?v=0.3.0"></script>
-  <script src="assets/examples.js?v=0.3.0"></script>
-  <script src="assets/app.js?v=0.3.0"></script>
+  <script src="assets/audit-core.js?v=0.4.0"></script>
+  <script src="assets/examples.js?v=0.4.0"></script>
+  <script src="assets/app.js?v=0.4.0"></script>
 </body>
 </html>
