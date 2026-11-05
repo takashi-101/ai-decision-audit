@@ -1,14 +1,12 @@
 /*
  * ai-decision-audit — 判定の中核
- * 画面に依存しない処理（API呼び出し、返答の形式の検証、再試行、該当箇所の位置探し、書き出し）をまとめる。
+ * 画面に依存しない処理（AIアプリに渡す判定の依頼文づくり、返答の形式の検証、該当箇所の位置探し、書き出し）をまとめる。
+ * このファイルはどこにも通信しない。判定は、使う人が自分のAIアプリに依頼文を貼り、返答を貼り戻して行う。
  */
 (function (global) {
   'use strict';
 
-  var APP_VERSION = '0.3.0';
-  var MODEL = 'claude-sonnet-5-5';
-  var API_URL = 'https://api.anthropic.com/v1/messages';
-  var MAX_TOKENS = 8000;
+  var APP_VERSION = '0.4.0';
   var MAX_MARKS = 100;
   var NONE = 'なし';
 
@@ -21,7 +19,7 @@
   var TYPE_LABELS = TYPES.map(function (t) { return t.label; });
 
   var DECISION_LABELS = { adopt: '採る', reject: '採らない' };
-  var SOURCE_LABELS = { ai: 'AIの判定', manual: '手で付けた', example: '判定例' };
+  var SOURCE_LABELS = { ai: 'AIの判定（返答を貼り付け）', manual: '手で付けた', example: '判定例' };
 
   function typeKey(label) {
     for (var i = 0; i < TYPES.length; i++) if (TYPES[i].label === label) return TYPES[i].key;
@@ -68,9 +66,9 @@
     return '<依頼文>\n' + request + '\n</依頼文>\n\n<出力>\n' + output + '\n</出力>';
   }
 
-  function buildRetryText(errors) {
-    return '前の返答は、決められた形式になっていませんでした（' + errors.slice(0, 5).join('／') +
-      '）。説明や記号を付けず、決められた形のJSONだけを、もう一度返してください。';
+  // AIアプリにそのまま貼り付ける判定の依頼文（指示と文章を1つにまとめたもの）
+  function buildCopyPrompt(request, output) {
+    return buildSystemPrompt() + '\n\n' + buildUserContent(request, output);
   }
 
   /* ---------- 返答の読み取りと検証 ---------- */
@@ -83,9 +81,13 @@
     if (fence) t = fence[1];
     try {
       return { ok: true, value: JSON.parse(t) };
-    } catch (e) {
-      return { ok: false, errors: ['返答をJSONとして読めませんでした'] };
+    } catch (e) { /* 下で、前後の説明文を除いて読み直す */ }
+    // AIアプリが前後に説明を付けた返答は、最初の { から最後の } までを読む
+    var i = t.indexOf('{'), j = t.lastIndexOf('}');
+    if (i >= 0 && j > i) {
+      try { return { ok: true, value: JSON.parse(t.slice(i, j + 1)) }; } catch (e2) { /* 読めない */ }
     }
+    return { ok: false, errors: ['返答をJSONとして読めませんでした（途中で切れていないか、全体を貼り付けたかを確かめてください）'] };
   }
 
   function cleanQuote(s) {
@@ -129,90 +131,13 @@
     return errors.length ? { ok: false, errors: errors } : { ok: true, marks: marks };
   }
 
-  /* ---------- API呼び出し ---------- */
+  /* ---------- 返答を読み込む ---------- */
 
-  function httpErrorMessage(status) {
-    if (status === 400) return '判定の依頼をAPIが受け付けませんでした（400）。文章が長すぎる可能性があります。';
-    if (status === 401) return 'API鍵が正しくないようです（401）。鍵を確かめて、入れ直してください。';
-    if (status === 403) return 'この鍵では判定を使えません（403）。鍵の権限を確かめてください。';
-    if (status === 404) return '判定に使うモデルが見つかりませんでした（404）。';
-    if (status === 413) return '文章が長すぎて送れませんでした（413）。文章を短くしてお試しください。';
-    if (status === 429) return '利用の上限に達したか、混み合っています（429）。少し時間をおいてから、もう一度お試しください。';
-    if (status >= 500) return 'Anthropic側で一時的な問題が起きています（' + status + '）。少し時間をおいてから、もう一度お試しください。';
-    return '判定できませんでした（' + status + '）。';
-  }
-
-  async function callApi(apiKey, system, messages, fetchImpl) {
-    var res;
-    try {
-      res = await fetchImpl(API_URL, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true'
-        },
-        body: JSON.stringify({ model: MODEL, max_tokens: MAX_TOKENS, system: system, messages: messages })
-      });
-    } catch (e) {
-      throw new AuditError('network', 'Anthropicのサーバーにつながりませんでした。インターネットの接続を確かめてください。');
-    }
-
-    var data = null;
-    try { data = await res.json(); } catch (e) { data = null; }
-
-    if (!res.ok) {
-      var detail = data && data.error && typeof data.error.message === 'string' ? ['詳細：' + data.error.message] : [];
-      throw new AuditError('http', httpErrorMessage(res.status), detail);
-    }
-    if (!data || !Array.isArray(data.content)) return { text: '', stopReason: data && data.stop_reason };
-    var text = data.content
-      .filter(function (b) { return b && b.type === 'text' && typeof b.text === 'string'; })
-      .map(function (b) { return b.text; })
-      .join('');
-    return { text: text, stopReason: data.stop_reason };
-  }
-
-  /*
-   * 判定する。返答の形式が崩れていたら一度だけ再試行し、それでも崩れていたら AuditError('format') を投げる。
-   * opts: { apiKey, request, output, fetch?, onRetry? }
-   */
-  async function judge(opts) {
-    var fetchImpl = opts.fetch || function (u, o) { return global.fetch(u, o); };
-    var system = buildSystemPrompt();
-    var messages = [{ role: 'user', content: buildUserContent(opts.request, opts.output) }];
-    var lastErrors = [];
-
-    for (var attempt = 1; attempt <= 2; attempt++) {
-      if (attempt === 2 && typeof opts.onRetry === 'function') opts.onRetry(lastErrors);
-      var r = await callApi(opts.apiKey, system, messages, fetchImpl);
-
-      var errs;
-      if (r.stopReason === 'max_tokens') {
-        errs = ['返答が途中で切れていました'];
-      } else {
-        var parsed = parseModelText(r.text);
-        if (parsed.ok) {
-          var v = validateResult(parsed.value);
-          if (v.ok) return { marks: v.marks, attempts: attempt };
-          errs = v.errors;
-        } else {
-          errs = parsed.errors;
-        }
-      }
-      lastErrors = errs;
-
-      if (attempt === 1) {
-        messages = messages.concat([
-          { role: 'assistant', content: r.text && r.text.trim() ? r.text : '（空の返答）' },
-          { role: 'user', content: buildRetryText(errs) }
-        ]);
-      }
-    }
-    throw new AuditError('format',
-      '判定の返答の形式が崩れていたため、結果を表示できませんでした（2回試しました）。少し時間をおいて、もう一度「判定する」を押してください。',
-      lastErrors);
+  // AIアプリの返答（貼り付けた文字列）を読み、形式を確かめて印の一覧にする。
+  function readAnswer(text) {
+    var parsed = parseModelText(text);
+    if (!parsed.ok) return parsed;
+    return validateResult(parsed.value);
   }
 
   /* ---------- 該当箇所の位置探し ---------- */
@@ -287,8 +212,6 @@
 
   global.AuditCore = {
     APP_VERSION: APP_VERSION,
-    MODEL: MODEL,
-    API_URL: API_URL,
     NONE: NONE,
     TYPES: TYPES,
     TYPE_LABELS: TYPE_LABELS,
@@ -296,10 +219,10 @@
     typeKey: typeKey,
     buildSystemPrompt: buildSystemPrompt,
     buildUserContent: buildUserContent,
+    buildCopyPrompt: buildCopyPrompt,
     parseModelText: parseModelText,
     validateResult: validateResult,
-    callApi: callApi,
-    judge: judge,
+    readAnswer: readAnswer,
     findQuote: findQuote,
     locateMark: locateMark,
     decisionLabel: decisionLabel,
