@@ -5,9 +5,6 @@
   var C = window.AuditCore;
   var EXAMPLES = window.AuditExamples || [];
 
-  // API鍵はこの変数だけに持つ。保存はしない。
-  var apiKey = '';
-
   var state = {
     request: '',
     output: '',
@@ -105,86 +102,68 @@
     closeManual();
     startSession(ex.request, ex.output,
       ex.marks.map(function (m) { return Object.assign({}, m, { source: 'example' }); }),
-      '判定例「' + ex.title + '」（保存済みの判定結果です。APIは使っていません）');
+      '判定例「' + ex.title + '」（保存済みの判定結果です）');
     setStatus('判定例「' + ex.title + '」を開きました。印は' + state.marks.length + '件です。');
     $('result-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
-  /* ---------- API鍵 ---------- */
+  /* ---------- 自分のAIアプリで判定する ---------- */
 
-  function setKey() {
-    var v = $('key-input').value.trim();
-    if (!v) {
-      $('key-status').textContent = '鍵が入っていません。AnthropicのAPI鍵を貼り付けてください。';
-      return;
-    }
-    apiKey = v;
-    $('key-input').value = '';
-    $('key-input').placeholder = '設定済み';
-    $('key-status').textContent = '鍵を設定しました。保存はしません。このページを閉じるか再読み込みすると消えます。';
-    $('key-clear').hidden = false;
-  }
-
-  function clearKey() {
-    apiKey = '';
-    $('key-input').value = '';
-    $('key-input').placeholder = 'sk-ant-…';
-    $('key-status').textContent = '鍵を消しました。';
-    $('key-clear').hidden = true;
-  }
-
-  /* ---------- 判定する ---------- */
-
-  function setBusy(b) {
-    state.busy = b;
-    ['judge-btn', 'manual-btn', 'key-set'].forEach(function (id) { $(id).disabled = b; });
-    Array.prototype.forEach.call(document.querySelectorAll('#example-buttons button'), function (btn) { btn.disabled = b; });
-    $('judge-btn').textContent = b ? '判定しています…' : '判定する';
-  }
-
-  async function runJudge() {
-    if (state.busy) return;
+  // 判定の依頼文を作って欄に出し、できればクリップボードにも写す。どこにも送信しない。
+  function copyPrompt() {
     clearError();
     var inp = readInputs();
     if (!inp.request.trim() || !inp.output.trim()) {
-      showError('依頼文とAIの出力の両方を貼り付けてください。');
+      showError('依頼文とAIの出力の両方を貼り付けてから、「判定の依頼文を作る」を押してください。');
       return;
     }
-    if (!apiKey) {
-      showError('API鍵を入れて「鍵を使う」を押してから、「判定する」を押してください。鍵が無い場合は、判定例を開くか「手で付ける」を使えます。');
+    var box = $('prompt-text');
+    box.value = C.buildCopyPrompt(inp.request, inp.output);
+    $('prompt-area').hidden = false;
+    var done = function (copied) {
+      setStatus(copied
+        ? '判定の依頼文をコピーしました。自分のAIアプリに貼り付けて送り、返ってきた返答を下の欄に貼り付けてください。'
+        : '判定の依頼文を作りました。欄の中を全部選んでコピーし、自分のAIアプリに貼り付けてください。');
+    };
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(box.value).then(function () { done(true); }, function () { done(false); });
+        return;
+      }
+    } catch (e) { /* 写せないときは、欄から手でコピーしてもらう */ }
+    done(false);
+  }
+
+  // AIアプリの返答を読み込み、印にする。
+  function loadAnswer() {
+    clearError();
+    var inp = readInputs();
+    if (!inp.request.trim() || !inp.output.trim()) {
+      showError('依頼文とAIの出力の両方を貼り付けてから、返答を読み込んでください。');
+      return;
+    }
+    var answer = $('answer-input').value;
+    if (!answer.trim()) {
+      showError('AIアプリの返答を、「AIアプリの返答」の欄に貼り付けてください。');
+      return;
+    }
+    var r = C.readAnswer(answer);
+    if (!r.ok) {
+      showError('返答の形式が決められた形になっていないため、読み込めませんでした。AIアプリに「決められた形のJSONだけを、もう一度返してください」と頼み、返答を貼り直してください。', r.errors);
       return;
     }
     if (!confirmDiscard()) return;
-
-    setBusy(true);
-    setStatus('判定しています。数十秒かかることがあります…');
-    try {
-      var result = await C.judge({
-        apiKey: apiKey,
-        request: inp.request,
-        output: inp.output,
-        onRetry: function () {
-          setStatus('返答の形式が崩れていたため、もう一度問い合わせています…');
-        }
-      });
-      closeManual();
-      startSession(inp.request, inp.output,
-        result.marks.map(function (m) { return Object.assign({}, m, { source: 'ai' }); }),
-        'AIの判定（モデル：' + C.MODEL + '）');
-      var lost = state.marks.filter(function (m) { return isLost(m); }).length;
-      var msg = state.marks.length
-        ? '判定しました。印は' + state.marks.length + '件です。'
-        : '判定しました。依頼に書かれていないのにAIが決めたことは、見つかりませんでした。';
-      if (lost) msg += '（うち' + lost + '件は、文章の中で場所を特定できませんでした）';
-      setStatus(msg);
-      $('result-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
-    } catch (e) {
-      setStatus('');
-      if (e && e.name === 'AuditError') showError(e.message, e.details);
-      else showError('思わぬ問題が起きて判定できませんでした。もう一度お試しください。', [String(e && e.message || e)]);
-    } finally {
-      setBusy(false);
-    }
+    closeManual();
+    startSession(inp.request, inp.output,
+      r.marks.map(function (m) { return Object.assign({}, m, { source: 'ai' }); }),
+      'AIの判定（自分のAIアプリの返答を貼り付け）');
+    var lost = state.marks.filter(function (m) { return isLost(m); }).length;
+    var msg = state.marks.length
+      ? '返答を読み込みました。印は' + state.marks.length + '件です。'
+      : '返答を読み込みました。依頼に書かれていないのにAIが決めたことは、見つかりませんでした。';
+    if (lost) msg += '（うち' + lost + '件は、文章の中で場所を特定できませんでした）';
+    setStatus(msg);
+    $('result-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   function isLost(m) {
@@ -496,10 +475,8 @@
       ]));
     });
 
-    $('key-set').addEventListener('click', setKey);
-    $('key-input').addEventListener('keydown', function (e) { if (e.key === 'Enter') setKey(); });
-    $('key-clear').addEventListener('click', clearKey);
-    $('judge-btn').addEventListener('click', runJudge);
+    $('copy-prompt').addEventListener('click', copyPrompt);
+    $('load-answer').addEventListener('click', loadAnswer);
     $('manual-btn').addEventListener('click', openManual);
     $('manual-add').addEventListener('click', addManualMark);
     $('manual-close').addEventListener('click', function () { closeManual(); renderList(); setStatus(''); });
@@ -508,7 +485,7 @@
     document.addEventListener('selectionchange', onSelectionChange);
   }
 
-  // テストから書き出しの中身を受け取れるよう、download だけ差し替えられるようにする（鍵は外から読めない）
+  // テストから書き出しの中身を受け取れるよう、download だけ差し替えられるようにする
   var api = {
     download: download,
     state: state
