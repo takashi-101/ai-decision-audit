@@ -108,3 +108,10 @@ python test/run_tests.py --shots
 | `assets/examples.js` | 判定例3件（依頼文・出力・判定結果） |
 | `test/` | テストと画面写真の撮影 |
 | `docs/images/` | READMEの画面写真 |
+
+## 根拠（学習）
+
+| 機能 | 裏付けになる学習（発行元・名称・発行日） | 照会先（Credly） |
+|---|---|---|
+| 依頼文に書かれていないのにAIが決めたことの検出 | Coursera「Google Prompting Essentials」2026年10月13日 | https://www.credly.com/badges/c5305332-c47b-480d-85e0-678a72908a79 |
+| 印を付けた判断の採否を人が選び、記録する | Coursera「Google AI Essentials」2026年10月13日 | https://www.credly.com/badges/9b7acf04-3bbe-4e59-9cd9-39bc2c3b73e8 |
