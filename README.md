@@ -1,5 +1,7 @@
 # AIが決めたことチェック（ai-decision-audit）
 
+[![tests](https://github.com/takashi-101/ai-decision-audit/actions/workflows/tests.yml/badge.svg)](https://github.com/takashi-101/ai-decision-audit/actions/workflows/tests.yml)
+
 公開URL：https://takashi-101.github.io/ai-decision-audit/
 
 判定例を開くと、鍵なしで使い方を確かめられます。
