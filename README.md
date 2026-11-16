@@ -2,9 +2,7 @@
 
 [![tests](https://github.com/takashi-101/ai-decision-audit/actions/workflows/tests.yml/badge.svg)](https://github.com/takashi-101/ai-decision-audit/actions/workflows/tests.yml)
 
-公開URL：https://takashi-101.github.io/ai-decision-audit/
-
-判定例を開くと、鍵なしで使い方を確かめられます。
+試し方：このリポジトリをダウンロードし、`index.html` をブラウザで開きます。画面上部の判定例を開くと、鍵なしで使い方を確かめられます。
 
 ---
 
