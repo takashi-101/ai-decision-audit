@@ -118,3 +118,7 @@ python test/run_tests.py --shots
 | 生成AI・LLMの実装（RAG・エージェント・MCP） | Claude API（Messages API）の呼び出しと、崩れた応答の再試行・エラーの扱い（`assets/audit-core.js` の `callApi`・`validateResult`・`buildRetryText`、`test/unit-tests.js`） | Anthropic「Building with the Claude API（旧名 Claude with the Anthropic API）」2026年4月9日 | https://verify.skilljar.com/c/xcpjvyndrvd5 |
 
 「求められる力」の分け方は、[プロフィール](https://github.com/takashi-101) の「FDE・AXで求められる力と、その根拠」と同じです。
+
+## ライセンス
+
+MIT（[LICENSE](LICENSE)）
